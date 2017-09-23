@@ -1,18 +1,22 @@
 extern crate byteorder;
 extern crate data_encoding;
+extern crate dotenv;
 extern crate env_logger;
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate log;
 extern crate rumqtt;
 extern crate serde_json;
 
+mod config;
 mod lpp;
 
+use std::process::exit;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
 use data_encoding::BASE64;
+use dotenv::dotenv;
 use rumqtt::{MqttOptions, MqttClient, QoS};
 use rumqtt::{MqttCallback, Message};
 use serde_json::{Value};
@@ -107,6 +111,7 @@ fn notify_empty(dist: u16, prev_dist: u16) {
 
 fn main() {
     env_logger::init().unwrap();
+    dotenv().ok();
 
     println!("                  ____.----.");
     println!("        ____.----'          \\");
@@ -138,12 +143,20 @@ fn main() {
     println!("Welcome to smartmail!");
     println!("");
 
+    let conf = match config::Config::init() {
+        Ok(conf) => conf,
+        Err(msg) => {
+            println!("Error: {}", msg);
+            exit(1);
+        },
+    };
+
     let client_options = MqttOptions::new()
             .set_keep_alive(5)
             .set_reconnect(3)
             .set_client_id("smartmail")
-            .set_user_name(XXX)
-            .set_password(YYY)
+            .set_user_name(&conf.ttn_app_id)
+            .set_password(&conf.ttn_access_key)
             .set_broker("eu.thethings.network:1883");
 
     let callbacks = MqttCallback::new().on_message(on_message);
