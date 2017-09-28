@@ -5,6 +5,8 @@ This is a "smart mailbox" based on LoRaWAN and the
 notify you through [Threema](https://threema.ch/) when your mailbox just
 changed from empty to full, or vice versa.
 
+![Screenshot](screenshot.jpg)
+
 ## Configuration
 
 Export the following environment variables:
