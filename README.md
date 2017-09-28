@@ -23,3 +23,8 @@ them into a `.env` file (format: `KEY=value`, one entry per line).
 
 An example `smartmail.service` file for systemd based Linux distributions is
 provided.
+
+If you want to reduce the size of the release binary, you can strip out debug
+symbols:
+
+    $ strip target/release/smartmail
