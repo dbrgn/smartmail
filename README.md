@@ -19,12 +19,14 @@ Export the following environment variables:
 If you don't want to manually export environment variables, you can also write
 them into a `.env` file (format: `KEY=value`, one entry per line).
 
+## Building
+
+Type `make` to see possible build targets.
+
+There are options to build a release binary on your local machine, or in a
+Debian 8 Docker container.
+
 ## Deployment
 
 An example `smartmail.service` file for systemd based Linux distributions is
 provided.
-
-If you want to reduce the size of the release binary, you can strip out debug
-symbols:
-
-    $ strip target/release/smartmail
