@@ -122,13 +122,8 @@ fn process_keepalive(bytes: &[u8], threema_api: Arc<E2eApi>, conf: Arc<Config>) 
 fn notify_full(dist: u16, prev_dist: u16, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
     println!("Mailbox is full! Distance changed from {}cm to {}cm", prev_dist / 10, dist / 10);
 
-    let mut msg = format!("\u{1F4EC} Mailbox is full! Distance changed from {}cm to {}cm.", prev_dist / 10, dist / 10);
-
-    if let (Ok(voltage_guard), Ok(temperature_guard)) = (LAST_VOLTAGE.lock(), LAST_TEMPERATURE.lock()) {
-        if let (Some(voltage), Some(temperature)) = (*voltage_guard, *temperature_guard) {
-            msg.push_str(&format!(" (*Voltage: {}V, temperature: {}°C.*)", voltage, temperature));
-        };
-    };
+    let mut msg = format!("\u{1F4EC} Mailbox is full! Distance changed from {:.1}cm to {:.1}cm.", (prev_dist as f32) / 10.0, (dist as f32) / 10.0);
+    maybe_append_stats(&mut msg);
 
     for recipient in conf.threema_to.iter() {
         threema_send(&recipient, &msg, &threema_api);
@@ -137,12 +132,21 @@ fn notify_full(dist: u16, prev_dist: u16, threema_api: Arc<E2eApi>, conf: Arc<Co
 
 fn notify_empty(dist: u16, prev_dist: u16, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
     println!("Mailbox was emptied. Distance changed from {}cm to {}cm", prev_dist / 10, dist / 10);
+
+    let mut msg = format!("\u{1F4ED} Mailbox was emptied. Distance changed from {:.1}cm to {:.1}cm.", (prev_dist as f32) / 10.0, (dist as f32) / 10.0);
+    maybe_append_stats(&mut msg);
+
     for recipient in conf.threema_to.iter() {
-        threema_send(&recipient,
-                     &format!("\u{1F4ED} Mailbox was emptied. Distance changed from {}cm to {}cm.",
-                              prev_dist / 10, dist / 10),
-                    &threema_api);
+        threema_send(&recipient, &msg, &threema_api);
     }
+}
+
+fn maybe_append_stats(msg: &mut String) {
+    if let (Ok(voltage_guard), Ok(temperature_guard)) = (LAST_VOLTAGE.lock(), LAST_TEMPERATURE.lock()) {
+        if let (Some(voltage), Some(temperature)) = (*voltage_guard, *temperature_guard) {
+            msg.push_str(&format!(" (_Voltage: {}V, temperature: {}°C._)", voltage, temperature));
+        };
+    };
 }
 
 fn threema_send(to: &str, msg: &str, threema_api: &Arc<E2eApi>) {
