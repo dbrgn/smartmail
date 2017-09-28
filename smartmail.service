@@ -1,0 +1,22 @@
+[Unit]
+Description=Notifications for new physical mail, using the ax-sense
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+ExecStart=/usr/local/bin/smartmail
+TimeoutStartSec=5
+TimeoutStopSec=2
+Restart=on-failure
+KillSignal=SIGINT
+Environment="TTN_APP_ID=<appid>"
+Environment="TTN_ACCESS_KEY=<access-key>"
+Environment="THREEMA_FROM=<gateway-id>"
+Environment="THREEMA_TO=<recipient-id-1>,<recipient-id-2>"
+Environment="THREEMA_SECRET=<secret>"
+Environment="THREEMA_PRIVATE_KEY=<private-key>"
+
+[Install]
+WantedBy=multi-user.target

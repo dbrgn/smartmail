@@ -18,3 +18,8 @@ Export the following environment variables:
 
 If you don't want to manually export environment variables, you can also write
 them into a `.env` file (format: `KEY=value`, one entry per line).
+
+## Deployment
+
+An example `smartmail.service` file for systemd based Linux distributions is
+provided.
