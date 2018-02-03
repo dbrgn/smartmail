@@ -1,5 +1,7 @@
 # smartmail
 
+[![CircleCI][circle-ci-badge]][circle-ci]
+
 This is a "smart mailbox" based on LoRaWAN and the
 [ax-sense](https://twitter.com/adnexo_gmbh/status/901370927405047808) that will
 notify you through [Threema](https://threema.ch/) when your physical mailbox
@@ -32,3 +34,7 @@ Debian 8 Docker container.
 
 An example `smartmail.service` file for systemd based Linux distributions is
 provided.
+
+<!-- Badges -->
+[circle-ci]: https://circleci.com/gh/dbrgn/smartmail/tree/master
+[circle-ci-badge]: https://circleci.com/gh/dbrgn/smartmail/tree/master.svg?style=shield
