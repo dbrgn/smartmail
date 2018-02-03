@@ -96,7 +96,7 @@ fn process_distance(bytes: &[u8], threema_api: Arc<E2eApi>, conf: Arc<Config>) {
     };
 }
 
-fn process_keepalive(bytes: &[u8], threema_api: Arc<E2eApi>, conf: Arc<Config>) {
+fn process_keepalive(bytes: &[u8], _threema_api: Arc<E2eApi>, _conf: Arc<Config>) {
     info!("Received keepalive message");
     let decoder = LppDecoder::new(bytes.iter());
     for item in decoder {
@@ -172,7 +172,7 @@ fn threema_send(to: &str, msg: &str, threema_api: &Arc<E2eApi>) {
 }
 
 fn main() {
-    env_logger::init().unwrap();
+    env_logger::init();
     dotenv().ok();
 
     println!("                  ____.----.");
