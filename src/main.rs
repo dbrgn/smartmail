@@ -4,6 +4,7 @@ extern crate dotenv;
 extern crate env_logger;
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate log;
+extern crate reqwest;
 extern crate rumqtt;
 extern crate serde_json;
 extern crate threema_gateway;
@@ -53,15 +54,19 @@ fn on_message(msg: Message, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
         .expect("The \"payload_raw\" field does not contain a string!");
     let payload_bytes = BASE64.decode(payload_raw.as_bytes())
         .expect("Raw payload is not valid Base64!");
+    let deveui = decoded.get("hardware_serial")
+        .expect("Uplink does not contain \"hardware_serial\" field!")
+        .as_str()
+        .expect("The \"hardware_serial\" field does not contain a string!");
 
     match port {
-        101 => process_keepalive(&payload_bytes, threema_api, conf),
-        102 => process_distance(&payload_bytes, threema_api, conf),
+        101 => process_keepalive(&payload_bytes, &deveui, threema_api, conf),
+        102 => process_distance(&payload_bytes, &deveui, threema_api, conf),
         p => info!("Received message on unknown port: {}", p),
     };
 }
 
-fn process_distance(bytes: &[u8], threema_api: Arc<E2eApi>, conf: Arc<Config>) {
+fn process_distance(bytes: &[u8], deveui: &str, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
     info!("Received distance measurement");
 
     // Create decoder
@@ -83,9 +88,9 @@ fn process_distance(bytes: &[u8], threema_api: Arc<E2eApi>, conf: Arc<Config>) {
             if let Some(prev_dist) = *guard {
                 debug!("Previous distance was {}mm", prev_dist);
                 if prev_dist < THRESHOLD && distance_mm >= THRESHOLD {
-                    notify_empty(distance_mm, prev_dist, threema_api, conf);
+                    notify_empty(distance_mm, prev_dist, threema_api, conf.clone());
                 } else if prev_dist >= THRESHOLD && distance_mm < THRESHOLD {
-                    notify_full(distance_mm, prev_dist, threema_api, conf);
+                    notify_full(distance_mm, prev_dist, threema_api, conf.clone());
                 };
             } else {
                 debug!("No previous distance stored");
@@ -94,9 +99,42 @@ fn process_distance(bytes: &[u8], threema_api: Arc<E2eApi>, conf: Arc<Config>) {
         },
         Err(e) => error!("Could not lock LAST_DISTANCE mutex: {}", e),
     };
+
+    // Log to InfluxDB
+    if let Some(ref influxdb) = conf.influxdb {
+        let client = match reqwest::Client::new() {
+            Ok(client) => client,
+            Err(e) => {
+                warn!("Could not create reqwest::Client instance: {}", e);
+                return;
+            },
+        };
+        let mut builder = match client.post(&format!("{}/write?db={}", influxdb.url, influxdb.db)) {
+            Ok(builder) => builder,
+            Err(e) => {
+                warn!("Could not create reqwest::RequestBuilder instance: {}", e);
+                return;
+            }
+        };
+        let res = builder
+            .body(format!("distance,deveui={} value={}", deveui, distance_mm))
+            .basic_auth(influxdb.user.clone(), Some(influxdb.pass.clone()))
+            .send();
+        match res.map(|response| response.status()) {
+            Ok(status) if status == reqwest::StatusCode::NoContent => {
+                debug!("Sent distance to InfluxDB (db={})", influxdb.db);
+            }
+            Ok(status) => {
+                warn!("Unexpected status when writing data to InfluxDB: {}", status);
+            }
+            Err(e) => {
+                warn!("Error when writing data to InfluxDB: {}", e);
+            }
+        }
+    };
 }
 
-fn process_keepalive(bytes: &[u8], _threema_api: Arc<E2eApi>, _conf: Arc<Config>) {
+fn process_keepalive(bytes: &[u8], _deveui: &str, _threema_api: Arc<E2eApi>, _conf: Arc<Config>) {
     info!("Received keepalive message");
     let decoder = LppDecoder::new(bytes.iter());
     for item in decoder {
