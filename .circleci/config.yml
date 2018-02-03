@@ -2,7 +2,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: rust:1.23
+      - image: saltyrtc/circleci-image-rs:latest
     steps:
       - checkout
       # Load cargo target from cache if possible.
