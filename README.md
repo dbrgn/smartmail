@@ -20,6 +20,13 @@ Export the following environment variables:
 - `THREEMA_SECRET`: The Threema Gateway API secret
 - `THREEMA_PRIVATE_KEY`: The hex encoded private key of your Gateway ID
 
+If you want to send data to InfluxDB too, set the following three env vars:
+
+- `INFLUXDB_USER`: The InfluxDB username
+- `INFLUXDB_PASS`: The InfluxDB password
+- `INFLUXDB_DB`: The InfluxDB database
+- `INFLUXDB_URL`: The InfluxDB URL (no trailing slash)
+
 If you don't want to manually export environment variables, you can also write
 them into a `.env` file (format: `KEY=value`, one entry per line).
 
