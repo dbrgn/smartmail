@@ -4,6 +4,7 @@ extern crate dotenv;
 extern crate env_logger;
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate log;
+extern crate mqtt3;
 extern crate reqwest;
 extern crate rumqtt;
 extern crate serde_json;
@@ -14,17 +15,19 @@ mod lpp;
 
 use std::process::exit;
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 use std::thread;
-use std::time::Duration;
 
 use data_encoding::BASE64;
 use dotenv::dotenv;
-use rumqtt::{MqttOptions, MqttClient, QoS};
-use rumqtt::{MqttCallback, Message};
+use mqtt3::Publish;
+use reqwest::{Client, StatusCode};
+use rumqtt::{MqttOptions, ConnectionMethod, ReconnectOptions, SecurityOptions};
+use rumqtt::{MqttClient, QoS, Packet};
 use serde_json::Value;
 use threema_gateway::{ApiBuilder, E2eApi, RecipientKey};
 
-use config::Config;
+use config::{Config, InfluxConfig};
 use lpp::{LppDecoder, Channel, DataType};
 
 
@@ -38,8 +41,9 @@ lazy_static! {
 /// is non-empty.
 static THRESHOLD: u16 = 300;
 
-fn on_message(msg: Message, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
-    debug!("Received payload: {:?}", msg);
+fn on_message(msg: Publish, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
+    debug!("Received publish packet");
+    trace!("Packet: {:?}", msg);
 
     let decoded: Value = serde_json::from_slice(&msg.payload).unwrap();
     debug!("Payload: {:?}", decoded);
@@ -102,41 +106,15 @@ fn process_distance(bytes: &[u8], deveui: &str, threema_api: Arc<E2eApi>, conf: 
 
     // Log to InfluxDB
     if let Some(ref influxdb) = conf.influxdb {
-        let client = match reqwest::Client::new() {
-            Ok(client) => client,
-            Err(e) => {
-                warn!("Could not create reqwest::Client instance: {}", e);
-                return;
-            },
-        };
-        let mut builder = match client.post(&format!("{}/write?db={}", influxdb.url, influxdb.db)) {
-            Ok(builder) => builder,
-            Err(e) => {
-                warn!("Could not create reqwest::RequestBuilder instance: {}", e);
-                return;
-            }
-        };
-        let res = builder
-            .body(format!("distance,deveui={} value={}", deveui, distance_mm))
-            .basic_auth(influxdb.user.clone(), Some(influxdb.pass.clone()))
-            .send();
-        match res.map(|response| response.status()) {
-            Ok(status) if status == reqwest::StatusCode::NoContent => {
-                debug!("Sent distance to InfluxDB (db={})", influxdb.db);
-            }
-            Ok(status) => {
-                warn!("Unexpected status when writing data to InfluxDB: {}", status);
-            }
-            Err(e) => {
-                warn!("Error when writing data to InfluxDB: {}", e);
-            }
-        }
+        let tags = Some(format!("deveui={}", deveui));
+        send_to_influxdb(influxdb, "distance", tags, distance_mm.into());
     };
 }
 
-fn process_keepalive(bytes: &[u8], _deveui: &str, _threema_api: Arc<E2eApi>, _conf: Arc<Config>) {
+fn process_keepalive(bytes: &[u8], deveui: &str, _threema_api: Arc<E2eApi>, conf: Arc<Config>) {
     info!("Received keepalive message");
     let decoder = LppDecoder::new(bytes.iter());
+    let tags = Some(format!("deveui={}", deveui));
     for item in decoder {
         println!("{:?}", item);
         match (item.channel, item.value) {
@@ -145,16 +123,27 @@ fn process_keepalive(bytes: &[u8], _deveui: &str, _threema_api: Arc<E2eApi>, _co
                     Ok(mut guard) => *guard = Some(degrees),
                     Err(e) => error!("Could not lock LAST_TEMPERATURE mutex: {}", e),
                 };
+
+                // Log to InfluxDB
+                if let Some(ref influxdb) = conf.influxdb {
+                    send_to_influxdb(influxdb, "temperature", tags.clone(), degrees);
+                };
             },
             (Channel::Adc, DataType::AnalogInput(voltage)) => {
                 match LAST_VOLTAGE.lock() {
                     Ok(mut guard) => *guard = Some(voltage),
                     Err(e) => error!("Could not lock LAST_VOLTAGE mutex: {}", e),
                 };
+
+                // Log to InfluxDB
+                if let Some(ref influxdb) = conf.influxdb {
+                    send_to_influxdb(influxdb, "voltage", tags.clone(), voltage);
+                };
             },
             _ => {},
         }
     }
+
 }
 
 fn notify_full(dist: u16, prev_dist: u16, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
@@ -207,6 +196,42 @@ fn threema_send(to: &str, msg: &str, threema_api: &Arc<E2eApi>) {
         Ok(msg_id) => debug!("Sent Threema message to {} ({})", to, msg_id),
         Err(e) => error!("Could not send message to {}: {}", to, e),
     };
+}
+
+fn send_to_influxdb(conf: &InfluxConfig, measurement: &str, tags: Option<String>, value: f32) {
+    debug!("Sending {} to InfluxDB...", measurement);
+    let client = match Client::new() {
+        Ok(client) => client,
+        Err(e) => {
+            warn!("Could not create reqwest::Client instance: {}", e);
+            return;
+        },
+    };
+    let mut builder = match client.post(&format!("{}/write?db={}", conf.url, conf.db)) {
+        Ok(builder) => builder,
+        Err(e) => {
+            warn!("Could not create reqwest::RequestBuilder instance: {}", e);
+            return;
+        }
+    };
+    let res = builder
+        .body(match tags {
+            Some(tags) => format!("{},{} value={}", measurement, tags, value),
+            None => format!("{} value={}", measurement, value),
+        })
+        .basic_auth(conf.user.clone(), Some(conf.pass.clone()))
+        .send();
+    match res.map(|response| response.status()) {
+        Ok(status) if status == StatusCode::NoContent => {
+            debug!("Sent {} to InfluxDB (db={})", measurement, conf.db);
+        }
+        Ok(status) => {
+            warn!("Unexpected status when writing {} to InfluxDB: {}", measurement, status);
+        }
+        Err(e) => {
+            warn!("Error when writing {} to InfluxDB: {}", measurement, e);
+        }
+    }
 }
 
 fn main() {
@@ -266,27 +291,41 @@ fn main() {
     );
 
     // Set up MQTT connection
-    let client_options = MqttOptions::new()
-            .set_keep_alive(5)
-            .set_reconnect(3)
-            .set_client_id("smartmail")
-            .set_user_name(&conf.ttn_app_id)
-            .set_password(&conf.ttn_access_key)
-            .set_broker("eu.thethings.network:1883");
-    let callbacks = MqttCallback::new().on_message(move |msg| on_message(msg, api.clone(), conf.clone()));
+    let client_id = format!("smartmail-{}", {
+        let start = SystemTime::now();
+        let since_the_epoch = start.duration_since(UNIX_EPOCH).expect("Time went backwards");
+        since_the_epoch.as_secs()
+    });
+    let client_options = MqttOptions::new(client_id, "eu.thethings.network:1883".to_string())
+            .unwrap_or_else(|e| {
+                println!("Could not initialize MqttOptions: {}", e);
+                exit(3);
+            })
+            .set_keep_alive(60)
+            .set_reconnect_opts(ReconnectOptions::AfterFirstSuccess(10))
+            .set_security_opts(SecurityOptions::UsernamePassword((
+                conf.ttn_app_id.clone(),
+                conf.ttn_access_key.clone(),
+            )));
 
     println!("--> Connecting to the Things Network...");
-    let mut request = MqttClient::start(client_options, Some(callbacks)).expect("Coudn't start");
+    let (mut client, receiver) = MqttClient::start(client_options);
 
     println!("--> Subscribing to uplink messages...");
     let topics = vec![
-        ("+/devices/+/activations", QoS::Level2),
-        ("+/devices/+/up", QoS::Level2),
+        ("+/devices/+/activations", QoS::AtMostOnce),
+        ("+/devices/+/up", QoS::AtMostOnce),
     ];
-    request.subscribe(topics).expect("Subcription failure");
+    client.subscribe(topics).expect("Subcription failure");
 
-    println!("--> Listening!");
-    loop {
-        thread::sleep(Duration::from_secs(10));
-    }
+    thread::spawn(move || {
+        println!("--> Listening!");
+        for packet in receiver {
+            if let Packet::Publish(publish) = packet {
+                on_message(publish, api.clone(), conf.clone());
+            } else {
+                debug!("Received non-publish packet: {:?}", packet);
+            }
+        }
+    }).join().unwrap();
 }

@@ -9,6 +9,9 @@ just changed from empty to full, or vice versa.
 
 ![Screenshot](screenshot.jpg)
 
+The data can also be logged to an InfluxDB instance so that it can be
+visualized with Grafana.
+
 ## Configuration
 
 Export the following environment variables:
