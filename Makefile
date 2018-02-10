@@ -18,7 +18,7 @@ release: release-unstripped
 	strip target/release/smartmail
 
 release-jessie:
-	docker run --rm -v $(shell pwd):/code -w /code rust:1.20-jessie \
+	docker run --rm -v $(shell pwd):/code -w /code rust:1.23-jessie \
 		/bin/bash -c "apt-get update && apt-get install -y -q libsodium-dev && make release"
 
 .PHONY: default debug release-unstripped release release-jessie
