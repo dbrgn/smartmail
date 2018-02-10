@@ -22,7 +22,7 @@ use data_encoding::BASE64;
 use dotenv::dotenv;
 use mqtt3::Publish;
 use reqwest::{Client, StatusCode};
-use rumqtt::{MqttOptions, ConnectionMethod, ReconnectOptions, SecurityOptions};
+use rumqtt::{MqttOptions, ReconnectOptions, SecurityOptions};
 use rumqtt::{MqttClient, QoS, Packet};
 use serde_json::Value;
 use threema_gateway::{ApiBuilder, E2eApi, RecipientKey};
