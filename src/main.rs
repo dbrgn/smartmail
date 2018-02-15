@@ -52,6 +52,10 @@ fn on_message(msg: Publish, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
         .expect("Uplink does not contain \"port\" field!")
         .as_u64()
         .expect("The \"port\" field does not contain a number!");
+    let counter = decoded.get("counter")
+        .expect("Uplink does not contain \"counter\" field!")
+        .as_u64()
+        .expect("The \"counter\" field does not contain a number!");
     let payload_raw = decoded.get("payload_raw")
         .expect("Uplink does not contain \"payload_raw\" field!")
         .as_str()
@@ -63,6 +67,13 @@ fn on_message(msg: Publish, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
         .as_str()
         .expect("The \"hardware_serial\" field does not contain a string!");
 
+    // Log to InfluxDB
+    if let Some(ref influxdb) = conf.influxdb {
+        let tags = Some(format!("deveui={},port={}", deveui, port));
+        send_to_influxdb(influxdb, "counter", tags, counter as f32);
+    };
+
+    // Process depending on port
     match port {
         101 => process_keepalive(&payload_bytes, &deveui, threema_api, conf),
         102 => process_distance(&payload_bytes, &deveui, threema_api, conf),
