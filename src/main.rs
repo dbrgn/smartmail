@@ -313,7 +313,7 @@ fn main() {
                 exit(3);
             })
             .set_keep_alive(60)
-            .set_reconnect_opts(ReconnectOptions::AfterFirstSuccess(10))
+            .set_reconnect_opts(ReconnectOptions::Always(10))
             .set_security_opts(SecurityOptions::UsernamePassword((
                 conf.ttn_app_id.clone(),
                 conf.ttn_access_key.clone(),
