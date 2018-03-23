@@ -11,6 +11,7 @@ env_logger = "0.5"
 lazy_static = "1.0"
 log = "0.4"
 mqtt3 = { git = "https://github.com/tekjar/mqtt3" }
+regex = "0.2"
 reqwest = "0.7"
 rumqtt = { git = "https://github.com/AtherEnergy/rumqtt.git", branch = "tokio2" }
 serde_json = "1.0"

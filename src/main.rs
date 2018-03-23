@@ -5,6 +5,7 @@ extern crate env_logger;
 #[macro_use] extern crate lazy_static;
 #[macro_use] extern crate log;
 extern crate mqtt3;
+extern crate regex;
 extern crate reqwest;
 extern crate rumqtt;
 extern crate serde_json;
@@ -21,6 +22,7 @@ use std::thread;
 use data_encoding::BASE64;
 use dotenv::dotenv;
 use mqtt3::Publish;
+use regex::Regex;
 use reqwest::{Client, StatusCode};
 use rumqtt::{MqttOptions, ReconnectOptions, SecurityOptions};
 use rumqtt::{MqttClient, QoS, Packet};
@@ -35,6 +37,7 @@ lazy_static! {
     static ref LAST_DISTANCE: Mutex<Option<u16>> = Mutex::new(None);
     static ref LAST_VOLTAGE: Mutex<Option<f32>> = Mutex::new(None);
     static ref LAST_TEMPERATURE: Mutex<Option<f32>> = Mutex::new(None);
+    static ref DATA_RATE_RE: Regex = Regex::new(r"^SF(\d+)BW(\d+)$").unwrap();
 }
 
 /// If the distance falls below this value, the system assumes that the mailbox
@@ -66,11 +69,34 @@ fn on_message(msg: Publish, threema_api: Arc<E2eApi>, conf: Arc<Config>) {
         .expect("Uplink does not contain \"hardware_serial\" field!")
         .as_str()
         .expect("The \"hardware_serial\" field does not contain a string!");
+    let airtime = decoded.get("metadata")
+        .expect("Uplink does not contain \"metadata\" field!")
+        .get("airtime")
+        .expect("The \"metadata\" object does not contain \"airtime\" field!")
+        .as_u64()
+        .expect("The \"metadata.airtime\" field does not contain a number!");
+    let data_rate = decoded.get("metadata")
+        .expect("Uplink does not contain \"metadata\" field!")
+        .get("data_rate")
+        .expect("The \"metadata\" object does not contain \"data_rate\" field!")
+        .as_str()
+        .expect("The \"metadata.data_rate\" field does not contain a string!");
+    let data_rate_captures = DATA_RATE_RE.captures(&data_rate)
+        .expect("Could not parse \"data_rate\" field");
+    let sf: Option<u8> = data_rate_captures.get(1).and_then(|mtch| mtch.as_str().parse().ok());
+    let bw: Option<u8> = data_rate_captures.get(2).and_then(|mtch| mtch.as_str().parse().ok());
 
     // Log to InfluxDB
     if let Some(ref influxdb) = conf.influxdb {
         let tags = Some(format!("deveui={},port={}", deveui, port));
-        send_to_influxdb(influxdb, "counter", tags, counter as f32);
+        send_to_influxdb(influxdb, "counter", tags.clone(), counter as f32);
+        send_to_influxdb(influxdb, "airtime", tags.clone(), airtime as f32);
+        if let Some(val) = sf {
+            send_to_influxdb(influxdb, "sf", tags.clone(), val as f32);
+        }
+        if let Some(val) = bw {
+            send_to_influxdb(influxdb, "bw", tags.clone(), val as f32);
+        }
     };
 
     // Process depending on port
