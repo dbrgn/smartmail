@@ -121,7 +121,7 @@ fn process_distance(bytes: &[u8], deveui: &str, threema_api: Arc<E2eApi>, conf: 
         Some(dist) => dist,
         None => return,
     };
-    debug!("Distance is {}mm", distance_mm);
+    println!("==> Distance: {}mm", distance_mm);
 
     // Compare to previous measurement
     match LAST_DISTANCE.lock() {
@@ -153,9 +153,10 @@ fn process_keepalive(bytes: &[u8], deveui: &str, _threema_api: Arc<E2eApi>, conf
     let decoder = LppDecoder::new(bytes.iter());
     let tags = Some(format!("deveui={}", deveui));
     for item in decoder {
-        println!("{:?}", item);
         match (item.channel, item.value) {
             (Channel::DistanceSensor, DataType::Temperature(degrees)) => {
+                println!("==> Temperature: {} °C", degrees);
+
                 match LAST_TEMPERATURE.lock() {
                     Ok(mut guard) => *guard = Some(degrees),
                     Err(e) => error!("Could not lock LAST_TEMPERATURE mutex: {}", e),
@@ -167,6 +168,8 @@ fn process_keepalive(bytes: &[u8], deveui: &str, _threema_api: Arc<E2eApi>, conf
                 };
             },
             (Channel::Adc, DataType::AnalogInput(voltage)) => {
+                println!("==> Voltage: {} V", voltage);
+
                 match LAST_VOLTAGE.lock() {
                     Ok(mut guard) => *guard = Some(voltage),
                     Err(e) => error!("Could not lock LAST_VOLTAGE mutex: {}", e),
