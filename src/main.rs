@@ -360,7 +360,7 @@ fn main() {
 
     thread::spawn(move || {
         println!("--> Listening!");
-        for packet in receiver {
+        for (packet, _userdata) in receiver {
             if let Packet::Publish(publish) = packet {
                 on_message(publish, api.clone(), conf.clone());
             } else {
